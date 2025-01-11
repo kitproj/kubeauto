@@ -93,7 +93,9 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 			gvkToResourceType[gvk] = resource.Name
 
 			// get the latest resource version
-			list, err := dynamicClient.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
+			list, err := dynamicClient.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: labels,
+			})
 			if err != nil {
 				return err
 			}
@@ -248,7 +250,7 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 
 					go func() {
 						<-readyChan
-						// pod might get deleted, check open and close socket every 1s
+						// pod might get deleted, check open and close socket every few seconds
 						ticker := time.NewTicker(5 * time.Second)
 						defer ticker.Stop()
 						for {
