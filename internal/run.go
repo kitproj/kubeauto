@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
+	"net"
 	"net/http"
 	"os"
 	"slices"
@@ -146,8 +147,8 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 	// Create a pod informer
 	podInformer := factory.Core().V1().Pods().Informer()
 
-	logging := sync.Map{}        // namespace/name/container -> true
-	portForwarding := sync.Map{} // port -> true
+	logging := sync.Map{}        // name/container -> true
+	portForwarding := sync.Map{} // port -> sync.Mutex
 
 	// Add event handlers
 	processPod := func(obj any) {
@@ -206,12 +207,11 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 				// start port-forwarding
 				go func() {
 					// check if the pod is already being port-forwarded
-					if _, ok := portForwarding.Load(hostPort); ok {
-						return
-					}
+					obj, _ := portForwarding.LoadOrStore(hostPort, &sync.Mutex{})
+					mu := obj.(*sync.Mutex)
 
-					portForwarding.Store(hostPort, true)
-					defer portForwarding.Delete(hostPort)
+					mu.Lock()
+					defer mu.Unlock()
 
 					fmt.Printf(color("pods", "[pods/%s] %s port-forwarding %d -> %d\n"), pod.Name, ctr.Name, containerPort, hostPort)
 
@@ -219,6 +219,7 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 						if r := recover(); r != nil {
 							fmt.Printf(color("pods", "[pods/%s] %s error while port-forwarding: %d: %v\n"), pod.Name, ctr.Name, hostPort, r)
 						}
+						fmt.Printf(color("pods", "[pods/%s] %s port-forwarding %d -> %d stopped\n"), pod.Name, ctr.Name, containerPort, hostPort)
 					}()
 
 					req := clientset.CoreV1().RESTClient().Post().
@@ -234,15 +235,36 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 
 					dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, "POST", req.URL())
 
-					stopChan := ctx.Done()
+					stopChan, cancel := context.WithCancel(ctx)
+					defer cancel()
 					readyChan := make(chan struct{})
 
 					ports := []string{fmt.Sprintf("%d:%d", hostPort, containerPort)}
 
-					fw, err := portforward.New(dialer, ports, stopChan, readyChan, out, out)
+					fw, err := portforward.New(dialer, ports, stopChan.Done(), readyChan, out, out)
 					if err != nil {
 						panic(err)
 					}
+
+					go func() {
+						<-readyChan
+						// pod might get deleted, check open and close socket every 1s
+						ticker := time.NewTicker(5 * time.Second)
+						defer ticker.Stop()
+						for {
+							select {
+							case <-ticker.C:
+								dial, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", hostPort))
+								if err != nil {
+									cancel()
+									return
+								}
+								_ = dial.Close()
+							case <-ctx.Done():
+								return
+							}
+						}
+					}()
 
 					if err := fw.ForwardPorts(); err != nil {
 						panic(err)
