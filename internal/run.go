@@ -243,7 +243,7 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 
 					ports := []string{fmt.Sprintf("%d:%d", hostPort, containerPort)}
 
-					fw, err := portforward.New(dialer, ports, stopChan.Done(), readyChan, out, out)
+					fw, err := portforward.New(dialer, ports, stopChan.Done(), readyChan, nil, nil)
 					if err != nil {
 						panic(err)
 					}
