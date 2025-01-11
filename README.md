@@ -10,7 +10,13 @@ I wrote it because of buggy scripts that use `kubetl logs -l` and `kube port-for
 
 ## Installation
 
-TODO
+Find the latest release on the releases page:
+
+```bash
+sudo curl --fail --silent --location --output /usr/local/bin/kubeauto \
+  https://github.com/kitproj/kubeauto/releases/download/v0.0.3/kubeauto_v0.0.3_linux_amd64 && \
+  sudo chmod +x /usr/local/bin/kubeauto
+```
 
 ## Usage
 
