@@ -1,0 +1,9 @@
+default:
+	go fmt ./...
+	go vet  ./...
+	go test ./...
+
+release:
+	go install github.com/ffurrer2/semver/v2/cmd/semver@latest
+	git tag v$(semver next patch $(git tag|sort -V|tail -n1|cut -c 2-))
+	git push --tags
