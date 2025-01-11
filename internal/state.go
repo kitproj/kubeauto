@@ -78,6 +78,28 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 		if num == 0 {
 			phase = "Failed"
 			message = "no load balancer found"
+		} else {
+			phase = "Running"
+		}
+	case "v1/Service":
+		service := &corev1.Service{}
+		err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, service)
+		if err != nil {
+			fmt.Printf("error converting to service: %v\n", err)
+			return
+		}
+
+		// check the load balancer status
+		if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
+			num := len(service.Status.LoadBalancer.Ingress)
+			if num == 0 {
+				phase = "Failed"
+				message = "no load balancer found"
+			} else {
+				phase = "Running"
+			}
+		} else {
+
 		}
 	case "v1/Pod":
 		pod := &corev1.Pod{}
