@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -39,33 +40,6 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 			message, _ = condition["message"].(string)
 		}
 	}
-
-	// observed generation, used by deployments, statefulsets, etc.
-	generation, _, _ := unstructured.NestedInt64(un.Object, "metadata", "generation")
-	observedGeneration, _, _ := unstructured.NestedInt64(un.Object, "status", "observedGeneration")
-
-	if generation > 0 {
-		if generation != observedGeneration {
-			phase = "Pending"
-			message = fmt.Sprintf("observed generation %d does not match generation %d", observedGeneration, generation)
-		} else {
-			phase = "Running"
-		}
-	}
-
-	// ready replicas, used by deployments, statefulsets, etc.
-	readyReplicas, _, _ := unstructured.NestedInt64(un.Object, "status", "readyReplicas")
-	replicas, _, _ := unstructured.NestedInt64(un.Object, "spec", "replicas")
-	if readyReplicas != replicas {
-		phase = "Pending"
-		message = fmt.Sprintf("ready replicas %d does not match replicas %d", readyReplicas, replicas)
-	}
-
-	if un.GetDeletionTimestamp() != nil {
-		phase = "Deleting"
-		message = "resource is being deleted"
-	}
-
 	switch un.GetAPIVersion() + "/" + un.GetKind() {
 	case "networking.k8s.io/v1/Ingress":
 		ingress := &networkingv1.Ingress{}
@@ -81,6 +55,76 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 		} else {
 			phase = "Running"
 		}
+	case "apps/v1/ReplicaSet":
+		replicaset := &appsv1.ReplicaSet{}
+		err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, replicaset)
+		if err != nil {
+			fmt.Printf("error converting to replicaset: %v\n", err)
+			return
+		}
+
+		replicas := 1
+		if replicaset.Spec.Replicas != nil {
+			replicas = int(*replicaset.Spec.Replicas)
+		}
+
+		// check the ready replicas
+		readyReplicas := replicaset.Status.ReadyReplicas
+
+		if replicas > 0 && readyReplicas == int32(replicas) {
+			phase = "Running"
+			message = ""
+		} else {
+			phase = "Pending"
+			message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+		}
+	case "apps/v1/Deployment":
+		deployment := &appsv1.Deployment{}
+		err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, deployment)
+		if err != nil {
+			fmt.Printf("error converting to deployment: %v\n", err)
+			return
+		}
+
+		replicas := 1
+		if deployment.Spec.Replicas != nil {
+			replicas = int(*deployment.Spec.Replicas)
+		}
+
+		// check the ready replicas
+		readyReplicas := deployment.Status.ReadyReplicas
+
+		if replicas > 0 && readyReplicas == int32(replicas) {
+			phase = "Running"
+			message = ""
+		} else {
+			phase = "Pending"
+			message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+		}
+	case "apps/v1/StatefulSet":
+		statefulset := &appsv1.StatefulSet{}
+		err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, statefulset)
+		if err != nil {
+			fmt.Printf("error converting to statefulset: %v\n", err)
+			return
+		}
+
+		replicas := 1
+		if statefulset.Spec.Replicas != nil {
+			replicas = int(*statefulset.Spec.Replicas)
+		}
+
+		// check the ready replicas
+		readyReplicas := statefulset.Status.ReadyReplicas
+
+		if replicas > 0 && readyReplicas == int32(replicas) {
+			phase = "Running"
+			message = ""
+		} else {
+			phase = "Pending"
+			message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+		}
+
 	case "v1/Service":
 		service := &corev1.Service{}
 		err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, service)
@@ -88,6 +132,8 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 			fmt.Printf("error converting to service: %v\n", err)
 			return
 		}
+
+		message = fmt.Sprintf("%v: %v", service.Spec.Type, service.Spec.ClusterIP)
 
 		// check the load balancer status
 		if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
@@ -98,8 +144,6 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 			} else {
 				phase = "Running"
 			}
-		} else {
-
 		}
 	case "v1/Pod":
 		pod := &corev1.Pod{}
@@ -123,5 +167,11 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 			}
 		}
 	}
+
+	if un.GetDeletionTimestamp() != nil {
+		phase = "Deleting"
+		message = ""
+	}
+
 	return
 }
