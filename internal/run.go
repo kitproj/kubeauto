@@ -106,7 +106,6 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 				fmt.Printf(color(resource.Name, "[%s/%s] (%s) %s: %s\n"), resource.Name, un.GetName(), phase, reason, message)
 			}
 
-			fmt.Printf("watching %s\n", resource.Name)
 			watch, err := dynamicClient.Resource(gvr).Namespace(namespace).Watch(ctx, metav1.ListOptions{
 				LabelSelector:   labels,
 				ResourceVersion: resourceVersion,
@@ -180,13 +179,23 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 				logging.Store(key, true)
 				defer logging.Delete(key)
 
+				pods := clientset.CoreV1().Pods(pod.Namespace)
+
+				// the pod might have been deleted before we get here, if so just exit quietly
+				_, err := pods.Get(ctx, pod.Name, metav1.GetOptions{})
+				if err != nil {
+					return
+				}
+
 				defer func() {
 					if r := recover(); r != nil {
-						fmt.Printf(color("pods", "[pods/%s] %s: error while tailing logs: %v\n"), pod.Name, ctr.Name, r)
+						fmt.Printf(color("pods", "[pods/%s/%s] error while tailing logs: %v\n"), pod.Name, ctr.Name, r)
+					} else {
+						fmt.Printf(color("pods", "[pods/%s/%s] tailing logs stopped\n"), pod.Name, ctr.Name)
 					}
 				}()
 
-				req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+				req := pods.GetLogs(pod.Name, &corev1.PodLogOptions{
 					Follow:    true,
 					Container: ctr.Name,
 					SinceTime: &metav1.Time{Time: time.Now()},
@@ -215,13 +224,12 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 					mu.Lock()
 					defer mu.Unlock()
 
-					fmt.Printf(color("pods", "[pods/%s] %s port-forwarding %d -> %d\n"), pod.Name, ctr.Name, containerPort, hostPort)
-
 					defer func() {
 						if r := recover(); r != nil {
-							fmt.Printf(color("pods", "[pods/%s] %s error while port-forwarding: %d: %v\n"), pod.Name, ctr.Name, hostPort, r)
+							fmt.Printf(color("pods", "[pods/%s/%s] error while port-forwarding: %d -> %d: %v\n"), pod.Name, ctr.Name, hostPort, containerPort, r)
+						} else {
+							fmt.Printf(color("pods", "[pods/%s/%s] port-forwarding %d -> %d stopped\n"), pod.Name, ctr.Name, hostPort, containerPort)
 						}
-						fmt.Printf(color("pods", "[pods/%s] %s port-forwarding %d -> %d stopped\n"), pod.Name, ctr.Name, containerPort, hostPort)
 					}()
 
 					req := clientset.CoreV1().RESTClient().Post().
@@ -267,6 +275,8 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 							}
 						}
 					}()
+
+					fmt.Printf(color("pods", "[pods/%s/%s] port-forwarding %d -> %d\n"), pod.Name, ctr.Name, hostPort, containerPort)
 
 					if err := fw.ForwardPorts(); err != nil {
 						panic(err)
