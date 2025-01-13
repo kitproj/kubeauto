@@ -39,6 +39,9 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 			reason, _ = condition["reason"].(string)
 			message, _ = condition["message"].(string)
 		}
+		if type_ == "Ready" {
+			phase = "Ready"
+		}
 	}
 	switch un.GetAPIVersion() + "/" + un.GetKind() {
 	case "networking.k8s.io/v1/Ingress":
@@ -53,7 +56,7 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 			phase = "Failed"
 			message = "no load balancer found"
 		} else {
-			phase = "Running"
+			phase = "Ready"
 		}
 	case "apps/v1/ReplicaSet":
 		replicaset := &appsv1.ReplicaSet{}
@@ -71,12 +74,17 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 		// check the ready replicas
 		readyReplicas := replicaset.Status.ReadyReplicas
 
-		if replicas > 0 && readyReplicas == int32(replicas) {
-			phase = "Running"
-			message = ""
+		if replicas > 0 {
+			if readyReplicas == int32(replicas) {
+				phase = "Ready"
+				message = ""
+			} else {
+				phase = "Pending"
+				message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+			}
 		} else {
-			phase = "Pending"
-			message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+			phase = "Inactive"
+			message = ""
 		}
 	case "apps/v1/Deployment":
 		deployment := &appsv1.Deployment{}
@@ -94,12 +102,17 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 		// check the ready replicas
 		readyReplicas := deployment.Status.ReadyReplicas
 
-		if replicas > 0 && readyReplicas == int32(replicas) {
-			phase = "Running"
-			message = ""
+		if replicas > 0 {
+			if readyReplicas == int32(replicas) {
+				phase = "Ready"
+				message = ""
+			} else {
+				phase = "Pending"
+				message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+			}
 		} else {
-			phase = "Pending"
-			message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+			phase = "Inactive"
+			message = ""
 		}
 	case "apps/v1/StatefulSet":
 		statefulset := &appsv1.StatefulSet{}
@@ -117,12 +130,17 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 		// check the ready replicas
 		readyReplicas := statefulset.Status.ReadyReplicas
 
-		if replicas > 0 && readyReplicas == int32(replicas) {
-			phase = "Running"
-			message = ""
+		if replicas > 0 {
+			if readyReplicas == int32(replicas) {
+				phase = "Ready"
+				message = ""
+			} else {
+				phase = "Pending"
+				message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+			}
 		} else {
-			phase = "Pending"
-			message = fmt.Sprintf("ready replicas %d, specified replicas %d", readyReplicas, replicas)
+			phase = "Inactive"
+			message = ""
 		}
 
 	case "v1/Service":
@@ -142,7 +160,7 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 				phase = "Failed"
 				message = "no load balancer found"
 			} else {
-				phase = "Running"
+				phase = "Serving"
 			}
 		}
 	case "v1/Pod":

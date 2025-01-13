@@ -103,7 +103,7 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 
 			for _, un := range list.Items {
 				phase, reason, message := state(&un)
-				fmt.Printf(color(resource.Name, "[%s/%s] (%s) %s: %s\n"), resource.Name, un.GetName(), phase, reason, message)
+				fmt.Println(color(resource.Name, join(delim(resource.Name+"/"+un.GetName(), "[", "]"), delim(phase, "(", ")"), delim(reason, "", ":"), message)))
 			}
 
 			watch, err := dynamicClient.Resource(gvr).Namespace(namespace).Watch(ctx, metav1.ListOptions{
@@ -276,7 +276,7 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 						}
 					}()
 
-					fmt.Printf(color("pods", "[pods/%s/%s] port-forwarding %d -> %d\n"), pod.Name, ctr.Name, hostPort, containerPort)
+					fmt.Printf(color("pods", "[pods/%s/%s] forwarding port %d -> %d\n"), pod.Name, ctr.Name, hostPort, containerPort)
 
 					if err := fw.ForwardPorts(); err != nil {
 						panic(err)
