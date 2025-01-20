@@ -14,8 +14,14 @@ Find the latest release on the releases page:
 
 ```bash
 sudo curl --fail --silent --location --output /usr/local/bin/kubeauto \
-  https://github.com/kitproj/kubeauto/releases/download/v0.0.5/kubeauto_v0.0.5_linux_amd64 && \
+  https://github.com/kitproj/kubeauto/releases/download/v0.0.6/kubeauto_v0.0.6_linux_amd64 && \
   sudo chmod +x /usr/local/bin/kubeauto
+```
+
+For Go users
+
+```bash
+go install github.com/kitproj/kubeauto@v0.0.6
 ```
 
 ## Usage
