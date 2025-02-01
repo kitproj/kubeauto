@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-func Run(ctx context.Context, group, namespace, labels string, hostPortOffset int) error {
+func Run(ctx context.Context, group, namespace, labels, container string, allContainers bool, hostPortOffset int) error {
 	// connect to the k8s cluster
 	kubeConfig := os.Getenv("KUBECONFIG")
 	if kubeConfig == "" {
@@ -161,11 +161,21 @@ func Run(ctx context.Context, group, namespace, labels string, hostPortOffset in
 			running[s.Name] = s.State.Running != nil
 		}
 
+		if container == "" {
+			container = pod.Annotations["kubectl.kubernetes.io/default-container"]
+		}
+
 		for _, ctr := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
 			// skip containers that are not running
 			if !running[ctr.Name] {
 				continue
 			}
+
+			// skip containers that are not the one we want to watch
+			if !allContainers && ctr.Name != container {
+				continue
+			}
+
 			out := colorWriter("pods", fmt.Sprintf("[pods/%s] %s:  ", pod.Name, ctr.Name))
 			go func() {
 				// start a log tail
