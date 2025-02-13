@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -83,7 +84,6 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 
 			// if the verbs do not include "watch" we cannot watch this resource
 			if !slices.Contains(resource.Verbs, "watch") {
-				fmt.Printf("cannot watch %s (%s)\n", resource.Name, resource.Kind)
 				continue
 			}
 
@@ -200,8 +200,6 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 				defer func() {
 					if r := recover(); r != nil {
 						fmt.Printf(color("pods", "[pods/%s/%s] error while tailing logs: %v\n"), pod.Name, ctr.Name, r)
-					} else {
-						fmt.Printf(color("pods", "[pods/%s/%s] tailing logs stopped\n"), pod.Name, ctr.Name)
 					}
 				}()
 
@@ -212,12 +210,12 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 				})
 				podLogs, err := req.Stream(ctx)
 				if err != nil {
-					panic(fmt.Errorf("Error opening stream: %s\n", err))
+					panic(fmt.Errorf("Error opening stream: %w\n", err))
 				}
 				defer podLogs.Close()
 				_, err = io.Copy(out, podLogs)
 				if err != nil && !errors.Is(err, context.Canceled) {
-					panic(fmt.Errorf("Error copying stream: %s\n", err))
+					panic(fmt.Errorf("Error copying stream: %w\n", err))
 				}
 			}()
 			for _, port := range ctr.Ports {
@@ -226,7 +224,7 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 				hostPort := hostPortOffset + int(containerPort)
 
 				// start port-forwarding
-				go func() {
+				go func(containerPort int32, hostPort int) {
 					// check if the pod is already being port-forwarded
 					obj, _ := portForwarding.LoadOrStore(hostPort, &sync.Mutex{})
 					mu := obj.(*sync.Mutex)
@@ -237,8 +235,6 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 					defer func() {
 						if r := recover(); r != nil {
 							fmt.Printf(color("pods", "[pods/%s/%s] error while port-forwarding: %d -> %d: %v\n"), pod.Name, ctr.Name, hostPort, containerPort, r)
-						} else {
-							fmt.Printf(color("pods", "[pods/%s/%s] port-forwarding %d -> %d stopped\n"), pod.Name, ctr.Name, hostPort, containerPort)
 						}
 					}()
 
@@ -250,6 +246,9 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 
 					transport, upgrader, err := spdy.RoundTripperFor(config)
 					if err != nil {
+						if strings.Contains(err.Error(), "not found") {
+							return
+						}
 						panic(err)
 					}
 
@@ -291,7 +290,7 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 					if err := fw.ForwardPorts(); err != nil {
 						panic(err)
 					}
-				}()
+				}(containerPort, hostPort)
 			}
 		}
 	}
