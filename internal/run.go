@@ -267,6 +267,7 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 
 					go func() {
 						<-readyChan
+						fmt.Printf(color("pods", "[pods/%s/%s] forwarding port %d -> %d\n"), pod.Name, ctr.Name, hostPort, containerPort)
 						// pod might get deleted, check open and close socket every few seconds
 						ticker := time.NewTicker(5 * time.Second)
 						defer ticker.Stop()
@@ -285,9 +286,10 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 						}
 					}()
 
-					fmt.Printf(color("pods", "[pods/%s/%s] forwarding port %d -> %d\n"), pod.Name, ctr.Name, hostPort, containerPort)
-
 					if err := fw.ForwardPorts(); err != nil {
+						if errors.Is(err, portforward.ErrLostConnectionToPod) {
+							return
+						}
 						panic(err)
 					}
 				}(containerPort, hostPort)
