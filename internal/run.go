@@ -138,7 +138,7 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 	}
 
 	// Create a shared informer factory for only the labelled resource managed-by kit and named after the task
-	factory := informers.NewSharedInformerFactoryWithOptions(clientset, 0,
+	factory := informers.NewSharedInformerFactoryWithOptions(clientset, 5*time.Second,
 		informers.WithNamespace(namespace),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = labels
