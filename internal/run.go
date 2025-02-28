@@ -5,11 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
+	"os"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	runtimeutil "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
@@ -18,16 +27,26 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
-	"net"
-	"net/http"
-	"os"
-	"slices"
-	"strings"
-	"sync"
-	"time"
 )
 
 func Run(ctx context.Context, group, namespace, labels, container string, allContainers bool, hostPortOffset int) error {
+
+	// Install custom error handler to suppress unhandled error messages from port forwarding
+	runtimeutil.ErrorHandlers = []runtimeutil.ErrorHandler{func(ctx context.Context, err error, msg string, keysAndValues ...any) {
+		if err == nil {
+			return
+		}
+		// Suppress common port forwarding errors
+		if strings.Contains(err.Error(), "error copying from") ||
+			strings.Contains(err.Error(), "an error occurred forwarding") {
+			return
+		}
+		// Log other errors
+		x := fmt.Sprintf(msg, keysAndValues...)
+		y := fmt.Sprintf("%s: %v'", x, err)
+		println(y)
+	}}
+
 	// connect to the k8s cluster
 	kubeConfig := os.Getenv("KUBECONFIG")
 	if kubeConfig == "" {
