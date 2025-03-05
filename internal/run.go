@@ -253,6 +253,9 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 
 					defer func() {
 						if r := recover(); r != nil {
+							if strings.Contains(fmt.Sprint(r), "not found") {
+								return
+							}
 							fmt.Printf(color("pods", "[pods/%s/%s] error while port-forwarding: %d -> %d: %v\n"), pod.Name, ctr.Name, hostPort, containerPort, r)
 						}
 					}()
@@ -265,9 +268,6 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 
 					transport, upgrader, err := spdy.RoundTripperFor(config)
 					if err != nil {
-						if strings.Contains(err.Error(), "not found") {
-							return
-						}
 						panic(err)
 					}
 
@@ -286,7 +286,6 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 
 					go func() {
 						<-readyChan
-						fmt.Printf(color("pods", "[pods/%s/%s] forwarding port %d -> %d\n"), pod.Name, ctr.Name, hostPort, containerPort)
 						// pod might get deleted, check open and close socket every few seconds
 						ticker := time.NewTicker(5 * time.Second)
 						defer ticker.Stop()
