@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -183,6 +184,20 @@ func state(un *unstructured.Unstructured) (phase string, reason string, message 
 				reason = terminated.Reason
 				message = fmt.Sprintf("container %q exited with code %d: %s", ctr.Name, terminated.ExitCode, terminated.Message)
 			}
+		}
+
+		// Check if pod is ready
+		isReady := true
+		for _, condition := range pod.Status.Conditions {
+			if condition.Type == corev1.PodReady && condition.Status != corev1.ConditionTrue {
+				isReady = false
+				break
+			}
+		}
+
+		if isReady && pod.Status.Phase == corev1.PodRunning {
+			phase = "Ready"
+			message = "Pod is ready and running"
 		}
 	}
 

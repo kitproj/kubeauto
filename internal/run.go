@@ -180,6 +180,18 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 			running[s.Name] = s.State.Running != nil
 		}
 
+		// Check if pod is ready
+		isReady := true
+		for _, condition := range pod.Status.Conditions {
+			if condition.Type == corev1.PodReady && condition.Status != corev1.ConditionTrue {
+				isReady = false
+				break
+			}
+		}
+
+		// Skip port forwarding if pod is not ready
+		skipPortForwarding := !isReady
+
 		if container == "" {
 			container = pod.Annotations["kubectl.kubernetes.io/default-container"]
 		}
@@ -229,14 +241,20 @@ func Run(ctx context.Context, group, namespace, labels, container string, allCon
 				})
 				podLogs, err := req.Stream(ctx)
 				if err != nil {
-					panic(fmt.Errorf("Error opening stream: %w\n", err))
+					panic(fmt.Errorf("error opening stream: %w\n", err))
 				}
 				defer podLogs.Close()
 				_, err = io.Copy(out, podLogs)
 				if err != nil && !errors.Is(err, context.Canceled) {
-					panic(fmt.Errorf("Error copying stream: %w\n", err))
+					panic(fmt.Errorf("error copying stream: %w\n", err))
 				}
 			}()
+
+			// Skip port forwarding if pod is not ready
+			if skipPortForwarding {
+				continue
+			}
+
 			for _, port := range ctr.Ports {
 				// only forward host ports
 				containerPort := port.ContainerPort
